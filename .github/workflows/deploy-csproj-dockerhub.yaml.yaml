@@ -1,0 +1,93 @@
+name: Publish DockerHub (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      csproj_file:
+        description: "Ruta al .csproj bajo /src (por ejemplo: www.dinaup.com/wwwdinaupcom.csproj)"
+        required: true
+        type: string
+      docker_image:
+        description: "Nombre del repo en Docker Hub (sin usuario). Ej.: www.dinaup.com"
+        required: true
+        type: string
+      dockerfile:
+        description: "Ruta al Dockerfile"
+        required: false
+        default: ./Dockerfile
+        type: string
+      context:
+        description: "Directorio de build context"
+        required: false
+        default: .
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+      GIT_TOKEN_PACKAGE_USERNAME:
+        required: true
+      GIT_TOKEN_PACKAGE:
+        required: true
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version & prepare tags
+        id: ver
+        shell: bash
+        run: |
+          FILE="src/${{ inputs.csproj_file }}"
+          if [ ! -f "$FILE" ]; then
+            echo "❌ No existe ${FILE}. Pasa 'inputs.csproj_file' con la ruta al .csproj (relativa a /src)" >&2
+            exit 1
+          fi
+
+          VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' "$FILE" || true)
+          if [ -z "$VERSION" ]; then
+            echo "❌ No se encontró <Version> en $FILE" >&2
+            exit 1
+          fi
+
+          BRANCH="$(echo "${GITHUB_REF_NAME//\//-}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.docker_image }}"
+
+          tags=()
+          if [ "$BRANCH" = "main" ]; then
+            tags+=("${IMAGE}:latest")
+            tags+=("${IMAGE}:${VERSION}")
+          else
+            tags+=("${IMAGE}:latest-${BRANCH}")
+            tags+=("${IMAGE}:${VERSION}-${BRANCH}")
+          fi
+
+          {
+            echo 'tags<<EOF'
+            printf '%s\n' "${tags[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.ver.outputs.tags }}
+          secrets: |
+            "nuget_username=${{ secrets.GIT_TOKEN_PACKAGE_USERNAME }}"
+            "nuget_token=${{ secrets.GIT_TOKEN_PACKAGE }}"
