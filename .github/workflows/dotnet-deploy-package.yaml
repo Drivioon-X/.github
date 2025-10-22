@@ -1,0 +1,71 @@
+name: Reusable • Build, Pack & Release (1 project)
+
+on:
+  workflow_call:
+    inputs:
+      project_path:
+        description: "Ruta al archivo .csproj (ej. ./src/Algo.csproj)"
+        required: true
+        type: string
+      dotnet:
+        description: "Versión del SDK de .NET"
+        required: false
+        type: string
+        default: "9.0.x"
+    secrets:
+      GIT_TOKEN_PACKAGE:
+        required: true
+ 
+
+jobs:
+  build-pack-release:
+    runs-on: windows-latest
+
+    env:
+      DOTNET_VERSION: ${{ inputs.dotnet }}
+      NUGET_FEED: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      VERSION_SUFFIX: ${{ github.ref_name == 'staging' && 'beta' || github.ref_name == 'dev' && 'alpha' || '' }}
+      PRERELEASE_FLAG: ${{ github.ref_name != 'main' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      
+
+          
+      # === Añadir AMBAS fuentes privadas de GitHub Packages ===
+      - name: Setup NuGet sources (Drivioon-X)
+        run: |
+          dotnet nuget add source --username Drivioon-X --password ${{ secrets.GIT_TOKEN_PACKAGE }} --store-password-in-clear-text --name d0 "https://nuget.pkg.github.com/Drivioon-X/index.json"
+        shell: pwsh
+      
+      - name: Restore dependencies
+        run: dotnet restore "${{ inputs.project_path }}"
+        shell: pwsh
+      
+      - name: Build
+        run: dotnet build "${{ inputs.project_path }}" -c Release
+        shell: pwsh
+      
+      - name: Publish
+        run: dotnet publish "${{ inputs.project_path }}" -c Release -o "Publish/$(Split-Path (Split-Path '${{ inputs.project_path }}' -LeafBase))"
+        shell: pwsh
+      
+      - name: Pack
+        run: dotnet pack "${{ inputs.project_path }}" --no-build -c Release -o nupkg
+        shell: pwsh
+ 
+      - name: Publish to GitHub Packages (Dinaup-0)
+        shell: pwsh
+        run: |
+          Get-ChildItem nupkg/*.nupkg | ForEach-Object {
+            dotnet nuget push $_.FullName `
+              --source "https://nuget.pkg.github.com/Drivioon-X/index.json" `
+              --api-key "${{ secrets.GIT_TOKEN_PACKAGE }}" `
+              --skip-duplicate
+          }
