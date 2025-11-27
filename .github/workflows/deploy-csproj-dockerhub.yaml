@@ -42,35 +42,39 @@ jobs:
         id: ver
         shell: bash
         run: |
-          FILE="src/${{ inputs.csproj_file }}"
-          if [ ! -f "$FILE" ]; then
-            echo "❌ No existe ${FILE}. Pasa 'inputs.csproj_file' con la ruta al .csproj (relativa a /src)" >&2
-            exit 1
-          fi
+FILE="src/${{ inputs.csproj_file }}"
+if [ ! -f "$FILE" ]; then
+  echo "❌ No existe ${FILE}. Pasa 'inputs.csproj_file' con la ruta al .csproj (relativa a /src)" >&2
+  exit 1
+fi
 
-          VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' "$FILE" || true)
-          if [ -z "$VERSION" ]; then
-            echo "❌ No se encontró <Version> en $FILE" >&2
-            exit 1
-          fi
+VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' "$FILE" || true)
+if [ -z "$VERSION" ]; then
+  echo "❌ No se encontró <Version> en $FILE" >&2
+  exit 1
+fi
 
-          BRANCH="$(echo "${GITHUB_REF_NAME//\//-}" | tr '[:upper:]' '[:lower:]')"
-          IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.docker_image }}"
+# Normaliza nombre de rama: reemplaza / por - y pasa a minúsculas
+BRANCH="$(echo "${GITHUB_REF_NAME//\//-}" | tr '[:upper:]' '[:lower:]')"
+IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.docker_image }}"
 
-          tags=()
-          if [ "$BRANCH" = "main" ]; then
-            tags+=("${IMAGE}:latest")
-            tags+=("${IMAGE}:${VERSION}")
-          else
-            tags+=("${IMAGE}:latest-${BRANCH}")
-            tags+=("${IMAGE}:${VERSION}-${BRANCH}")
-          fi
+tags=()
 
-          {
-            echo 'tags<<EOF'
-            printf '%s\n' "${tags[@]}"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+# Ramas principales no llevan sufijo; el resto sí (evita tags con /).
+if [ "${BRANCH}" = "main" ] || [ "${BRANCH}" = "master" ]; then
+  tags+=("${IMAGE}:latest")
+  tags+=("${IMAGE}:${VERSION}")
+else
+  tags+=("${IMAGE}:latest-${BRANCH}")
+  tags+=("${IMAGE}:${VERSION}-${BRANCH}")
+fi
+
+# Exportar salida para GitHub Actions
+{
+  echo 'tags<<EOF'
+  printf '%s\n' "${tags[@]}"
+  echo 'EOF'
+} >> "$GITHUB_OUTPUT"
           
       - name: Login to Docker Hub
         uses: docker/login-action@v3
