@@ -26,10 +26,7 @@ on:
         required: true
       DOCKERHUB_TOKEN:
         required: true
-      GIT_TOKEN_PACKAGE_USERNAME:
-        required: true
-      GIT_TOKEN_PACKAGE:
-        required: true
+ 
 
 jobs:
   docker:
@@ -60,8 +57,7 @@ jobs:
           BRANCH="$(echo "${GITHUB_REF_NAME//\//-}" | tr '[:upper:]' '[:lower:]')"
           IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.docker_image }}"
 
-          tags=()
-          if [ "$BRANCH" = "main" ]; then
+          tags=()DOCKERHUB_USERNAME
             tags+=("${IMAGE}:latest")
             tags+=("${IMAGE}:${VERSION}")
           else
