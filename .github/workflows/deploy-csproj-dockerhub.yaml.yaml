@@ -84,6 +84,4 @@ jobs:
           file: ${{ inputs.dockerfile }}
           push: true
           tags: ${{ steps.ver.outputs.tags }}
-          secrets: |
-            "nuget_username=${{ secrets.GIT_TOKEN_PACKAGE_USERNAME }}"
-            "nuget_token=${{ secrets.GIT_TOKEN_PACKAGE }}"
+       
